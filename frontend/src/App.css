@@ -2702,3 +2702,142 @@
     height: 180px;
   }
 }
+
+/* ==========================================================================
+   PROFILE PHOTO UPLOAD — Auth Register Form
+   ========================================================================== */
+.field-optional {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.photo-upload-area {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px;
+  border: 1.5px dashed var(--border-color, #ddd);
+  border-radius: 12px;
+  background: var(--bg-subtle, #fafafa);
+  transition: border-color 0.2s;
+}
+
+.photo-upload-area:hover {
+  border-color: var(--primary, #6366f1);
+}
+
+/* Preview circle */
+.photo-preview-wrap {
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--border-color, #ddd);
+  background: var(--bg-subtle, #f0f0f0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #aaa);
+}
+
+.photo-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-preview-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Controls beside the preview */
+.photo-upload-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hidden native file input */
+.photo-file-input-hidden {
+  display: none;
+}
+
+/* Styled label acting as the pick button */
+.btn-photo-pick {
+  display: inline-block;
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: var(--primary, #6366f1);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background 0.2s, transform 0.15s;
+  text-align: center;
+  align-self: flex-start;
+}
+
+.btn-photo-pick:hover {
+  background: var(--primary-dark, #4f46e5);
+  transform: translateY(-1px);
+}
+
+.btn-photo-clear {
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  align-self: flex-start;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.btn-photo-clear:hover {
+  border-color: #e55;
+  color: #e55;
+}
+
+.photo-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted, #aaa);
+  margin: 0;
+}
+
+.photo-error {
+  font-size: 0.75rem;
+  color: #e55;
+  margin: 0;
+}
+
+.photo-filename {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #666);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   NAVBAR AVATAR PHOTO (real S3 image)
+   ========================================================================== */
+.avatar-photo {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--primary, #6366f1);
+  flex-shrink: 0;
+}

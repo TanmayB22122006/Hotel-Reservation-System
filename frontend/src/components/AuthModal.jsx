@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { IconClose, IconUser, IconMail, IconShield } from "./Icons";
 
 export const AuthModal = ({
@@ -21,6 +21,48 @@ export const AuthModal = ({
     password: ""
   });
 
+  // Profile photo state for the register tab
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoError, setPhotoError] = useState("");
+  const fileInputRef = useRef(null);
+
+  const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+  const MAX_SIZE_MB = 5;
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    setPhotoError("");
+
+    if (!file) {
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      return;
+    }
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setPhotoError("Only JPEG, PNG, or WebP images are allowed.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setPhotoError(`Image must be smaller than ${MAX_SIZE_MB} MB.`);
+      e.target.value = "";
+      return;
+    }
+
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const clearPhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setPhotoError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const handleLoginSubmit = (e) => {
     e.preventDefault();
     onLogin(loginForm);
@@ -28,21 +70,16 @@ export const AuthModal = ({
 
   const handleRegisterSubmit = (e) => {
     e.preventDefault();
-    onRegister(registerForm);
+    // Pass the File object alongside form fields so App.jsx can build FormData
+    onRegister({ ...registerForm, photoFile });
   };
 
   // Quick fill helper for testing/demo
   const fillQuickDemo = (role) => {
     if (role === "admin") {
-      setLoginForm({
-        email: "admin@smarthotel.com",
-        password: "admin"
-      });
+      setLoginForm({ email: "admin@smarthotel.com", password: "admin" });
     } else {
-      setLoginForm({
-        email: "guest@example.com",
-        password: "password123"
-      });
+      setLoginForm({ email: "guest@example.com", password: "password123" });
     }
   };
 
@@ -116,18 +153,10 @@ export const AuthModal = ({
             <div className="demo-fill-box">
               <p className="demo-fill-title">Quick Demo Logins (for evaluation):</p>
               <div className="demo-pill-group">
-                <button
-                  type="button"
-                  className="demo-pill"
-                  onClick={() => fillQuickDemo("admin")}
-                >
+                <button type="button" className="demo-pill" onClick={() => fillQuickDemo("admin")}>
                   Fill Admin
                 </button>
-                <button
-                  type="button"
-                  className="demo-pill"
-                  onClick={() => fillQuickDemo("guest")}
-                >
+                <button type="button" className="demo-pill" onClick={() => fillQuickDemo("guest")}>
                   Fill Guest
                 </button>
               </div>
@@ -190,7 +219,70 @@ export const AuthModal = ({
                 </div>
               </div>
 
-              <button type="submit" className="btn-primary w-100" disabled={isLoading}>
+              {/* ── Profile Photo (optional) ── */}
+              <div className="form-group">
+                <label>
+                  Profile Photo
+                  <span className="field-optional"> — optional</span>
+                </label>
+
+                <div className="photo-upload-area">
+                  {/* Preview circle */}
+                  <div className="photo-preview-wrap">
+                    {photoPreview ? (
+                      <img
+                        src={photoPreview}
+                        alt="Profile preview"
+                        className="photo-preview-img"
+                      />
+                    ) : (
+                      <div className="photo-preview-placeholder">
+                        <IconUser size={28} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="photo-upload-controls">
+                    <label
+                      htmlFor="profilePhotoInput"
+                      className="btn-photo-pick"
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === "Enter" && fileInputRef.current?.click()}
+                    >
+                      {photoFile ? "Change Photo" : "Choose Photo"}
+                    </label>
+                    <input
+                      id="profilePhotoInput"
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handlePhotoChange}
+                      className="photo-file-input-hidden"
+                    />
+                    {photoFile && (
+                      <button
+                        type="button"
+                        className="btn-photo-clear"
+                        onClick={clearPhoto}
+                        title="Remove photo"
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <p className="photo-hint">JPEG, PNG, or WebP · max 5 MB</p>
+                    {photoError && <p className="photo-error">{photoError}</p>}
+                    {photoFile && !photoError && (
+                      <p className="photo-filename">{photoFile.name}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="btn-primary w-100"
+                disabled={isLoading || !!photoError}
+              >
                 {isLoading ? "Creating Account..." : "Create Free Account"}
               </button>
             </form>

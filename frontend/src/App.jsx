@@ -121,14 +121,21 @@ function App() {
   };
 
   // ================= AUTHENTICATION ================= //
-  const handleRegister = async ({ name, email, password }) => {
+  const handleRegister = async ({ name, email, password, photoFile }) => {
     setIsSubmitting(true);
     try {
-      const res = await axios.post(`${apiEndpoint}/users/register`, {
-        name,
-        email,
-        password,
-        role: "guest"
+      // Build multipart/form-data so multer-s3 can receive the optional photo
+      const formData = new FormData();
+      formData.append("name", name);
+      formData.append("email", email);
+      formData.append("password", password);
+      formData.append("role", "guest");
+      if (photoFile) {
+        formData.append("profilePhoto", photoFile);
+      }
+
+      const res = await axios.post(`${apiEndpoint}/users/register`, formData, {
+        headers: { "Content-Type": "multipart/form-data" }
       });
       showToast(res.data?.message || "Account registered successfully! Please sign in.");
       setAuthModal("login");
@@ -157,8 +164,21 @@ function App() {
       const matchedUser = usersRes.data.find((item) => item.email.toLowerCase() === email.toLowerCase());
 
       if (matchedUser) {
-        setUser(matchedUser);
-        localStorage.setItem("aura_logged_user", JSON.stringify(matchedUser));
+        // Fetch pre-signed photo URL if the user has a profile photo stored in S3
+        let photoUrl = null;
+        if (matchedUser.profilePhotoKey && matchedUser.id) {
+          try {
+            const photoRes = await axios.get(`${apiEndpoint}/users/${matchedUser.id}/photo`, { timeout: 5000 });
+            photoUrl = photoRes.data?.url || null;
+          } catch (photoErr) {
+            // Non-fatal: photo URL fetch failure should not block login
+            console.warn("Could not fetch profile photo URL:", photoErr.response?.data?.message || photoErr.message);
+          }
+        }
+
+        const userWithPhoto = { ...matchedUser, photoUrl };
+        setUser(userWithPhoto);
+        localStorage.setItem("aura_logged_user", JSON.stringify(userWithPhoto));
         showToast(`Welcome back, ${matchedUser.name}!`);
         setAuthModal(null);
 
@@ -169,7 +189,7 @@ function App() {
         }
       } else {
         // Fallback user object if not found in table
-        const fallbackUser = { id: 99, name: email.split("@")[0], email, role: "guest" };
+        const fallbackUser = { id: 99, name: email.split("@")[0], email, role: "guest", photoUrl: null };
         setUser(fallbackUser);
         localStorage.setItem("aura_logged_user", JSON.stringify(fallbackUser));
         showToast(`Signed in as ${fallbackUser.name}`);
@@ -180,8 +200,8 @@ function App() {
       // If backend is offline but user wants to demo login:
       if (!isApiOnline) {
         const demoUser = email.includes("admin")
-          ? { id: 1, name: "Admin Manager", email, role: "admin" }
-          : { id: 2, name: "Guest Traveler", email, role: "guest" };
+          ? { id: 1, name: "Admin Manager", email, role: "admin", photoUrl: null }
+          : { id: 2, name: "Guest Traveler", email, role: "guest", photoUrl: null };
         setUser(demoUser);
         localStorage.setItem("aura_logged_user", JSON.stringify(demoUser));
         showToast(`Offline Demo Session: Signed in as ${demoUser.role.toUpperCase()}`);

@@ -101,7 +101,15 @@ export const Navbar = ({
           ) : (
             <div className="user-profile-menu">
               <div className="user-avatar-badge" title={user.email}>
-                <span className="avatar-letter">{user.name?.charAt(0).toUpperCase()}</span>
+                {user.photoUrl ? (
+                  <img
+                    src={user.photoUrl}
+                    alt={`${user.name} profile`}
+                    className="avatar-photo"
+                  />
+                ) : (
+                  <span className="avatar-letter">{user.name?.charAt(0).toUpperCase()}</span>
+                )}
                 <span className="user-name-display">{user.name.split(" ")[0]}</span>
                 {user.role === "admin" && <span className="admin-tag">ADMIN</span>}
               </div>

@@ -22,6 +22,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["guest", "admin"],
       default: "guest"
+    },
+    profilePhotoKey: {
+      type: String,
+      default: null
     }
   },
   {
