@@ -33,7 +33,12 @@ function App() {
   const [users, setUsers] = useState([]);
   const [user, setUser] = useState(() => {
     try {
-      const savedUser = localStorage.getItem("aura_logged_user");
+      // Clear legacy localStorage auth keys to guarantee fresh login on new browser session
+      localStorage.removeItem("aura_logged_user");
+      localStorage.removeItem("token");
+      // Use sessionStorage for per-session authentication that survives page refresh
+      // but requires a fresh login once the browser/tab is closed.
+      const savedUser = sessionStorage.getItem("aura_logged_user");
       return savedUser ? JSON.parse(savedUser) : null;
     } catch {
       return null;
@@ -112,6 +117,16 @@ function App() {
     }
   }, [page, user, apiEndpoint]);
 
+  // Route protection: prevent unauthenticated or non-admin users on protected pages
+  useEffect(() => {
+    if (page === "admin" && user?.role !== "admin") {
+      setPage("home");
+    }
+    if (page === "my-bookings" && !user) {
+      setPage("home");
+    }
+  }, [page, user]);
+
   // Handle Switch API Endpoint
   const handleSaveApiEndpoint = (newUrl) => {
     setApiEndpoint(newUrl);
@@ -134,9 +149,9 @@ function App() {
         formData.append("profilePhoto", photoFile);
       }
 
-      const res = await axios.post(`${apiEndpoint}/users/register`, formData, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
+      // Send FormData without manual Content-Type header so the browser/axios
+      // sets multipart/form-data with the required boundary delimiter.
+      const res = await axios.post(`${apiEndpoint}/users/register`, formData);
       showToast(res.data?.message || "Account registered successfully! Please sign in.");
       setAuthModal("login");
     } catch (err) {
@@ -156,19 +171,23 @@ function App() {
       });
 
       if (loginRes.data?.token) {
-        localStorage.setItem("token", loginRes.data.token);
+        sessionStorage.setItem("token", loginRes.data.token);
       }
 
-      // Fetch users list to retrieve logged-in user profile details (as in original code)
-      const usersRes = await axios.get(`${apiEndpoint}/users`);
-      const matchedUser = usersRes.data.find((item) => item.email.toLowerCase() === email.toLowerCase());
+      // Check user details directly from login response or fallback to users list
+      let matchedUser = loginRes.data?.user;
+      if (!matchedUser) {
+        const usersRes = await axios.get(`${apiEndpoint}/users`);
+        matchedUser = usersRes.data.find((item) => item.email.toLowerCase() === email.toLowerCase());
+      }
 
       if (matchedUser) {
         // Fetch pre-signed photo URL if the user has a profile photo stored in S3
         let photoUrl = null;
-        if (matchedUser.profilePhotoKey && matchedUser.id) {
+        const targetUserId = matchedUser.id || matchedUser._id;
+        if (matchedUser.profilePhotoKey && targetUserId) {
           try {
-            const photoRes = await axios.get(`${apiEndpoint}/users/${matchedUser.id}/photo`, { timeout: 5000 });
+            const photoRes = await axios.get(`${apiEndpoint}/users/${targetUserId}/photo`, { timeout: 5000 });
             photoUrl = photoRes.data?.url || null;
           } catch (photoErr) {
             // Non-fatal: photo URL fetch failure should not block login
@@ -178,7 +197,7 @@ function App() {
 
         const userWithPhoto = { ...matchedUser, photoUrl };
         setUser(userWithPhoto);
-        localStorage.setItem("aura_logged_user", JSON.stringify(userWithPhoto));
+        sessionStorage.setItem("aura_logged_user", JSON.stringify(userWithPhoto));
         showToast(`Welcome back, ${matchedUser.name}!`);
         setAuthModal(null);
 
@@ -188,34 +207,29 @@ function App() {
           setPage("home");
         }
       } else {
-        // Fallback user object if not found in table
-        const fallbackUser = { id: 99, name: email.split("@")[0], email, role: "guest", photoUrl: null };
-        setUser(fallbackUser);
-        localStorage.setItem("aura_logged_user", JSON.stringify(fallbackUser));
-        showToast(`Signed in as ${fallbackUser.name}`);
-        setAuthModal(null);
+        sessionStorage.removeItem("token");
+        sessionStorage.removeItem("aura_logged_user");
+        showToast("Login failed: unable to load user profile.", "error");
       }
     } catch (err) {
       console.error(err);
-      // If backend is offline but user wants to demo login:
-      if (!isApiOnline) {
-        const demoUser = email.includes("admin")
-          ? { id: 1, name: "Admin Manager", email, role: "admin", photoUrl: null }
-          : { id: 2, name: "Guest Traveler", email, role: "guest", photoUrl: null };
-        setUser(demoUser);
-        localStorage.setItem("aura_logged_user", JSON.stringify(demoUser));
-        showToast(`Offline Demo Session: Signed in as ${demoUser.role.toUpperCase()}`);
-        setAuthModal(null);
-        if (demoUser.role === "admin") setPage("admin");
-      } else {
-        showToast(err.response?.data?.message || "Invalid email or password", "error");
-      }
+      // Clear any partial session state on login failure
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("aura_logged_user");
+      const errorMessage =
+        err.response?.data?.message ||
+        (!isApiOnline
+          ? "Cannot connect to backend server. Please verify the backend is running."
+          : "Invalid email or password");
+      showToast(errorMessage, "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleLogout = () => {
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("aura_logged_user");
     localStorage.removeItem("token");
     localStorage.removeItem("aura_logged_user");
     setUser(null);

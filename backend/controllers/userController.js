@@ -1,7 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
-const { GetObjectCommand } = require("@aws-sdk/client-s3");
+const { GetObjectCommand, HeadObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const User = require("../models/User");
 const { s3Client } = require("../middleware/upload");
@@ -13,31 +13,22 @@ async function buildPresignedUrl(key) {
   if (!key) return null;
   try {
     const command = new GetObjectCommand({
-      Bucket: process.env.S3_BUCKET_NAME,
+      Bucket: process.env.S3_BUCKET_NAME?.trim(),
       Key: key,
     });
     return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
   } catch (err) {
     console.error("⚠️  Failed to generate pre-signed URL:", err.message);
-    // Report AccessDenied honestly without crashing the response
-    if (err.name === "AccessDenied" || err.$metadata?.httpStatusCode === 403) {
-      console.error(
-        "❌ AccessDenied from S3. Check that AWS credentials in .env are current\n" +
-          "   (Learner Lab credentials expire when the session ends).\n" +
-          "   Also verify AWS_SESSION_TOKEN is set if using temporary credentials."
-      );
-    }
     return null;
   }
 }
 
 // REGISTER USER IN MONGODB
-// Now accepts multipart/form-data via multer (file is optional).
-// If a photo was uploaded, multer-s3 already placed it in S3 and
-// req.file.key holds the S3 object key.
+// Accepts multipart/form-data via multer or application/json.
+// If a photo was uploaded, multer-s3 placed it in S3 and req.file.key holds the key.
 exports.registerUser = async (req, res) => {
   try {
-    const { name, email, password, role = "guest" } = req.body;
+    const { name, email, password, role = "guest" } = req.body || {};
 
     if (!name || !email || !password) {
       return res
@@ -55,20 +46,27 @@ exports.registerUser = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // req.file is populated by multer-s3 when a photo is uploaded
-    const profilePhotoKey = req.file ? req.file.key : null;
+    // req.file is populated by multer-s3 when a photo is uploaded to S3
+    const profilePhotoKey = req.file?.key || null;
 
     const newUser = await User.create({
-      name,
+      name: name.trim(),
       email: email.toLowerCase().trim(),
       password: hashedPassword,
-      role,
+      role: "guest", // Always guest for public registration; admin accounts cannot be self-registered
       profilePhotoKey,
     });
 
     res.status(201).json({
       message: "User registered successfully in MongoDB",
       user_id: newUser._id,
+      user: {
+        id: newUser._id.toString(),
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        profilePhotoKey: newUser.profilePhotoKey,
+      },
     });
   } catch (error) {
     console.error("Error in registerUser:", error);
@@ -81,7 +79,7 @@ exports.registerUser = async (req, res) => {
 // LOGIN USER IN MONGODB
 exports.loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
 
     if (!email || !password) {
       return res
@@ -107,7 +105,18 @@ exports.loginUser = async (req, res) => {
       { expiresIn: "24h" }
     );
 
-    res.json({ message: "Login successful", token });
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: user._id.toString(),
+        _id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profilePhotoKey: user.profilePhotoKey || null,
+      },
+    });
   } catch (error) {
     console.error("Error in loginUser:", error);
     res.status(500).json({ message: "Login failed", error: error.message });
@@ -156,6 +165,57 @@ exports.getProfilePhoto = async (req, res) => {
       return res.status(404).json({ message: "No profile photo on file" });
     }
 
+    const bucket = process.env.S3_BUCKET_NAME?.trim();
+    if (!bucket) {
+      return res.status(503).json({
+        message: "Photo storage is not configured. S3_BUCKET_NAME is missing in .env.",
+      });
+    }
+
+    // Verify object exists in S3 before generating presigned URL
+    try {
+      const headCmd = new HeadObjectCommand({
+        Bucket: bucket,
+        Key: user.profilePhotoKey,
+      });
+      await s3Client.send(headCmd);
+    } catch (headErr) {
+      if (
+        headErr.name === "NotFound" ||
+        headErr.name === "NoSuchKey" ||
+        headErr.$metadata?.httpStatusCode === 404
+      ) {
+        return res.status(404).json({ message: "Profile photo not found in storage" });
+      }
+
+      if (
+        headErr.name === "InvalidToken" ||
+        headErr.name === "ExpiredToken" ||
+        headErr.name === "InvalidAccessKeyId" ||
+        headErr.name === "AccessDenied" ||
+        headErr.$metadata?.httpStatusCode === 403 ||
+        headErr.$metadata?.httpStatusCode === 400 ||
+        (headErr.message && (
+          headErr.message.includes("token") ||
+          headErr.message.includes("credential") ||
+          headErr.message.includes("Access Denied") ||
+          headErr.message.includes("security token")
+        ))
+      ) {
+        console.error("❌ S3 error verifying profile photo:", headErr.name, headErr.message);
+        return res.status(502).json({
+          message:
+            "Could not retrieve photo: AWS S3 credentials in backend/.env are invalid or expired (Learner Lab credentials require an active session and complete session token).",
+        });
+      }
+
+      console.error("⚠️ S3 HeadObject unexpected error:", headErr.message);
+      return res.status(500).json({
+        message: "Failed to verify photo in storage",
+        error: headErr.message,
+      });
+    }
+
     const url = await buildPresignedUrl(user.profilePhotoKey);
 
     if (!url) {
@@ -187,7 +247,7 @@ exports.updateUser = async (req, res) => {
     const updated = await User.findByIdAndUpdate(
       id,
       { name, role },
-      { new: true }
+      { returnDocument: "after" }
     ).select("-password");
 
     if (!updated) {

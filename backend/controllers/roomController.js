@@ -140,9 +140,9 @@ exports.updateRoom = async (req, res) => {
 
     let updatedRoom = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
-      updatedRoom = await Room.findByIdAndUpdate(id, updateData, { new: true });
+      updatedRoom = await Room.findByIdAndUpdate(id, updateData, { returnDocument: "after" });
     } else if (!isNaN(Number(id))) {
-      updatedRoom = await Room.findOneAndUpdate({ room_number: Number(id) }, updateData, { new: true });
+      updatedRoom = await Room.findOneAndUpdate({ room_number: Number(id) }, updateData, { returnDocument: "after" });
     }
 
     if (!updatedRoom) {

@@ -106,10 +106,19 @@ export const Navbar = ({
                     src={user.photoUrl}
                     alt={`${user.name} profile`}
                     className="avatar-photo"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      const letterEl = e.currentTarget.parentElement?.querySelector(".avatar-letter");
+                      if (letterEl) letterEl.style.display = "flex";
+                    }}
                   />
-                ) : (
-                  <span className="avatar-letter">{user.name?.charAt(0).toUpperCase()}</span>
-                )}
+                ) : null}
+                <span
+                  className="avatar-letter"
+                  style={{ display: user.photoUrl ? "none" : "flex" }}
+                >
+                  {user.name?.charAt(0).toUpperCase()}
+                </span>
                 <span className="user-name-display">{user.name.split(" ")[0]}</span>
                 {user.role === "admin" && <span className="admin-tag">ADMIN</span>}
               </div>
